@@ -1,0 +1,77 @@
+{
+  "apps": [
+    {
+      "id": "pdfcraft",
+      "name": "PdfCraft",
+      "repository": "https://github.com/storytold/pdfcraft.git",
+      "branch": "main",
+      "build": {
+        "workingDirectory": "apps/pdfcraft-web",
+        "command": ["trunk", "build", "--release"],
+        "outputDirectory": "../../dist/web",
+        "toolchain": "1.95.0"
+      },
+      "window": {
+        "width": 1280,
+        "height": 800,
+        "minWidth": 720,
+        "minHeight": 480
+      }
+    },
+    {
+      "id": "photocraft",
+      "name": "PhotoCraft",
+      "repository": "https://github.com/storytold/photocraft.git",
+      "branch": "main",
+      "build": {
+        "workingDirectory": "apps/photocraft-web",
+        "command": ["trunk", "build", "--release"],
+        "outputDirectory": "../../dist/web",
+        "toolchain": "1.95.0"
+      },
+      "window": {
+        "width": 1400,
+        "height": 900,
+        "minWidth": 800,
+        "minHeight": 600
+      }
+    },
+    {
+      "id": "vectorcraft",
+      "name": "VectorCraft",
+      "repository": "https://github.com/storytold/vectorcraft.git",
+      "branch": "main",
+      "build": {
+        "workingDirectory": "apps/vectorcraft-web",
+        "command": ["trunk", "build", "--release"],
+        "outputDirectory": "../../dist/web",
+        "toolchain": "1.95.0"
+      },
+      "window": {
+        "width": 1400,
+        "height": 900,
+        "minWidth": 800,
+        "minHeight": 600
+      }
+    },
+    {
+      "id": "lightcraft",
+      "name": "LightCraft",
+      "repository": "https://github.com/storytold/lightcraft.git",
+      "branch": "main",
+      "build": {
+        "workingDirectory": ".",
+        "command": ["cargo", "xtask", "web"],
+        "outputDirectory": "target/web-site",
+        "wasmBindgenVersionFromCargoLock": true,
+        "toolchain": "1.95.0"
+      },
+      "window": {
+        "width": 1400,
+        "height": 900,
+        "minWidth": 800,
+        "minHeight": 600
+      }
+    }
+  ]
+}

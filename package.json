@@ -1,0 +1,14 @@
+{
+  "name": "artcraft-terbium-ports",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/package-apps.mjs",
+    "check": "node --check scripts/package-apps.mjs",
+    "list": "node scripts/package-apps.mjs --list"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

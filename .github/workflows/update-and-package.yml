@@ -1,0 +1,54 @@
+name: Update and package Terbium ports
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      apps:
+        description: "Space-separated app IDs; leave empty for all configured apps"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Install upstream Rust toolchain
+        run: rustup toolchain install 1.95.0 --profile minimal --target wasm32-unknown-unknown
+      - name: Install LightCraft Rust 1.95 toolchain
+        run: rustup toolchain install 1.95.0 --profile minimal --target wasm32-unknown-unknown
+      - name: Install Trunk
+        run: cargo install trunk --version 0.21.14 --locked
+      - name: Install LightCraft wasm-bindgen CLI
+        run: cargo install wasm-bindgen-cli --version 0.2.129 --locked
+      - name: Install wasm-opt
+        uses: NiklasEi/wasm-opt-action@v2
+        with:
+          version: "version_116"
+      - name: Package configured applications
+        env:
+          APP_IDS: ${{ inputs.apps }}
+        run: |
+          if [ -n "$APP_IDS" ]; then
+            npm run build -- $APP_IDS
+          else
+            npm run build
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: artcraft-terbium-tapps
+          path: dist/*.tapp.zip
+          if-no-files-found: error
+          retention-days: 30

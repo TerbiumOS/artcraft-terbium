@@ -38,7 +38,7 @@ npm run build -- pdfcraft
 
 Artifacts are written to `dist/*.tapp.zip`. Every archive contains `.tbconfig`, app entry HTML, static web assets, and an icon directly at the ZIP root, as required by Terbium Package Manager.
 
-The generated `tfs-bridge.js` mirrors browser `localStorage` preference keys into Terbium File System under `/home/.config/artcraft-terbium/{app-id}/`. Existing browser preferences are copied into TFS at startup; TFS values are restored to browser storage so each upstream web app keeps working with its original storage code. This covers preferences and other small localStorage records, not large documents or app-managed IndexedDB/OPFS data.
+The build injects `scripts/tfsbridge-adapter.js` as `terbium-tfs.js` into every TAPP. It mirrors `localStorage` under `/home/{current-user}/.config/artcraft-terbium/{app-id}/`, exposes `window.artcraftTfs`, redirects supported file pickers and blob downloads to Terbium dialogs/TFS, and captures Ctrl/Cmd+S. TFS writes pass exact binary buffers and are size-verified. App-owned library/project databases that upstream persists in IndexedDB/OPFS remain in those browser stores.
 
 ## Automation
 
@@ -50,8 +50,8 @@ The workflow does not publish releases because a repository remote and release p
 
 The generated packages follow Terbium v2's documented TAPP layout:
 
-- A `.tapp` directory contains `.tbconfig` and `index.html`.
-- The directory is archived as `{app}.tapp.zip`.
+- A `.tapp` package has `.tbconfig` at archive root and points to the packaged app entry page.
+- The archive is named `{app}.tapp.zip`.
 - The installed package's `.tbconfig` is at archive root and owns window configuration; an app-repository entry should use `pkg-download` and omit `wmArgs`.
 
 ## Constraints

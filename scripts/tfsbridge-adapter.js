@@ -31,14 +31,17 @@
 
   const APP = window.__ARTCRAFT_APP__ || "vectorcraft";
   const BRIDGE_VERSION = "2.0.0";
+  const DEBUG = () => window.__ARTCRAFT_DEBUG__ || new URLSearchParams(window.location.search).has("tfsdebug");
 
   const log = (...args) => {
-    if (window.__ARTCRAFT_DEBUG__) {
+    if (DEBUG()) {
       console.debug("[artcraftTfs]", ...args);
     }
   };
 
-  const warn = (...args) => console.warn("[artcraftTfs]", ...args);
+  const warn = (...args) => {
+    if (DEBUG()) console.warn("[artcraftTfs]", ...args);
+  };
 
   const describeError = error => {
     if (error instanceof Error) {
@@ -114,10 +117,26 @@
     return null;
   }
 
-  function normalizeBytes(value) {
+  function isBlob(value) {
+    return value != null && (
+      (typeof Blob !== "undefined" && value instanceof Blob) ||
+      Object.prototype.toString.call(value) === "[object Blob]" ||
+      (typeof value.arrayBuffer === "function" && typeof value.size === "number" && typeof value.type === "string")
+    );
+  }
+
+  async function normalizeBytes(value) {
+    if (value == null) {
+      throw new TypeError("Unsupported file data: empty value");
+    }
+
+    if (typeof value === "string") return new TextEncoder().encode(value);
+
+    if (isBlob(value)) return new Uint8Array(await value.arrayBuffer());
+
     if (value instanceof Uint8Array) return value;
 
-    if (value instanceof ArrayBuffer) {
+    if (value instanceof ArrayBuffer || Object.prototype.toString.call(value) === "[object ArrayBuffer]") {
       return new Uint8Array(value);
     }
 
@@ -129,15 +148,33 @@
       );
     }
 
-    if (value instanceof Blob) {
-      return value;
+    if (typeof value === "object") {
+      const buffer = value.buffer;
+      const byteLength = Number(value.byteLength);
+      const byteOffset = Number(value.byteOffset) || 0;
+      if (buffer && Number.isInteger(byteLength) && byteLength >= 0) {
+        if (buffer instanceof ArrayBuffer || Object.prototype.toString.call(buffer) === "[object ArrayBuffer]") {
+          return new Uint8Array(buffer, byteOffset, byteLength);
+        }
+        if (ArrayBuffer.isView(buffer)) {
+          return new Uint8Array(buffer.buffer, buffer.byteOffset + byteOffset, byteLength);
+        }
+      }
+
+      if (typeof value.toArrayBuffer === "function") return normalizeBytes(value.toArrayBuffer());
+      if (typeof value.arrayBuffer === "function") return normalizeBytes(await value.arrayBuffer());
+      if (typeof value.toUint8Array === "function") return normalizeBytes(value.toUint8Array());
+      if (Array.isArray(value.data) || ArrayBuffer.isView(value.data)) return normalizeBytes(value.data);
+      if (Array.isArray(value.bytes) || ArrayBuffer.isView(value.bytes)) return normalizeBytes(value.bytes);
+      if (Number.isInteger(value.length) && value.length >= 0) return Uint8Array.from(value);
+
+      const keys = Object.keys(value);
+      if (keys.length && keys.every((key, index) => key === String(index))) {
+        return Uint8Array.from(keys, key => Number(value[key]) & 0xff);
+      }
     }
 
-    if (typeof value === "string") {
-      return new TextEncoder().encode(value);
-    }
-
-    throw new TypeError("Unsupported file data");
+    throw new TypeError(`Unsupported file data (${typeof value}, ${Object.prototype.toString.call(value)})`);
   }
 
   function basename(path, fallback = "document") {
@@ -169,10 +206,7 @@
    */
 
   async function dispatchOpen(name, bytes, path = null) {
-    const normalized = normalizeBytes(bytes);
-    const byteView = normalized instanceof Blob
-      ? new Uint8Array(await normalized.arrayBuffer())
-      : normalized;
+    const byteView = await normalizeBytes(bytes);
 
     // Give consumers several common representations. `bytes` remains a
     // Uint8Array for compatibility with the original adapter.
@@ -262,7 +296,7 @@
     }
 
     const raw = await filesystem.readFile(path, "arraybuffer");
-    const bytes = normalizeBytes(raw);
+    const bytes = await normalizeBytes(raw);
     const name = basename(path);
 
     await dispatchOpen(name, bytes, path);
@@ -369,15 +403,7 @@
       throw new Error("Terbium File System is unavailable");
     }
 
-    let bytes;
-    if (data instanceof Blob) {
-      bytes = new Uint8Array(await data.arrayBuffer());
-    } else {
-      const normalized = normalizeBytes(data);
-      bytes = normalized instanceof ArrayBuffer
-        ? new Uint8Array(normalized)
-        : normalized;
-    }
+    const bytes = await normalizeBytes(data);
 
     // Pass an exact, standalone ArrayBuffer; a typed-array's backing buffer
     // can contain unrelated bytes outside its byteOffset/byteLength.
@@ -392,9 +418,11 @@
 
     await filesystem.writeFile(path, exactBuffer, "arraybuffer");
 
-    const stat = await filesystem.stat(path).catch(() => null);
-    if (!stat || stat.size !== exactBuffer.byteLength) {
-      throw new Error(`TFS write verification failed for ${path}: expected ${exactBuffer.byteLength} bytes, found ${stat?.size ?? 0}`);
+    // Some TFS builds report a stale size immediately after a write. Verify
+    // the actual payload instead, which also catches empty/truncated writes.
+    const written = await normalizeBytes(await filesystem.readFile(path, "arraybuffer"));
+    if (written.byteLength !== exactBuffer.byteLength) {
+      throw new Error(`TFS write verification failed for ${path}: expected ${exactBuffer.byteLength} bytes, found ${written.byteLength}`);
     }
 
     log("Wrote file:", path, {

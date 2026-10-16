@@ -26,6 +26,18 @@ function run(command, args, cwd = root) {
   if (result.status !== 0) throw new Error(`Command failed (${result.status}): ${command} ${args.join(" ")}`);
 }
 
+function gitOutput(args, cwd) {
+  const result = spawnSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    shell: false,
+    env: { ...process.env, GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "safe.directory", GIT_CONFIG_VALUE_0: "*" }
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`Git command failed: git ${args.join(" ")} (${result.stderr?.trim() || result.status})`);
+  return result.stdout.trim();
+}
+
 async function exists(path) {
   try {
     await stat(path);
@@ -52,22 +64,54 @@ async function packageApp(app) {
   const appRoot = join(root, "build", `${app.id}.tapp`);
   const workingDirectory = resolve(source, app.build.workingDirectory);
   const output = resolve(workingDirectory, app.build.outputDirectory);
+  const buildStateDir = join(root, ".build-state");
+  const buildStamp = join(buildStateDir, `${app.id}.upstream-commit`);
 
+  let upstreamChanged = true;
+  let upstreamHead = null;
   if (await exists(source)) {
     if (!(await exists(join(source, ".git")))) {
       throw new Error(`${app.id}: ${source} exists but is not a Git checkout; move it aside and rerun the build`);
     }
+    const previousHead = gitOutput(["rev-parse", "HEAD"], source);
     run("git", ["fetch", "--depth", "1", "origin", app.branch], source);
-    run("git", ["reset", "--hard", "FETCH_HEAD"], source);
+    const fetchedHead = gitOutput(["rev-parse", "FETCH_HEAD"], source);
+    upstreamHead = fetchedHead;
+    const commitChanged = previousHead !== fetchedHead;
+    if (commitChanged) {
+      run("git", ["reset", "--hard", "FETCH_HEAD"], source);
+      console.log(`${app.id}: upstream commit changed ${previousHead.slice(0, 12)} -> ${fetchedHead.slice(0, 12)}`);
+    } else {
+      console.log(`${app.id}: upstream commit unchanged at ${fetchedHead.slice(0, 12)}`);
+    }
+    upstreamChanged = commitChanged;
   } else {
     await mkdir(join(root, "sources"), { recursive: true });
     run("git", ["clone", "--depth", "1", "--branch", app.branch, app.repository, source]);
+    upstreamChanged = true;
   }
 
   if (!Array.isArray(app.build.command) || app.build.command.length === 0) {
     throw new Error(`${app.id}: build.command must be a non-empty argument array`);
   }
   if (!(await exists(workingDirectory))) throw new Error(`${app.id}: build directory not found: ${workingDirectory}`);
+
+  // Build against the upstream source only when its commit differs from the
+  // commit recorded for the existing build. Otherwise reuse static output.
+  const packagedHead = await exists(buildStamp) ? (await readFile(buildStamp, "utf8")).trim() : null;
+  const buildOutOfDate = upstreamChanged || (packagedHead !== null && packagedHead !== upstreamHead);
+  const forceBuild = process.env.FORCE_APP_BUILD === "1";
+  const outputExists = await exists(output);
+  const runBuild = buildOutOfDate || forceBuild || !outputExists;
+  if (buildOutOfDate) {
+    console.log(`${app.id}: WASM build is out of date (packaged ${packagedHead?.slice(0, 12) ?? "unrecorded"}, upstream ${upstreamHead?.slice(0, 12) ?? "unknown"}); rebuilding`);
+  } else if (!outputExists) {
+    console.log(`${app.id}: no existing WASM build output; building upstream ${upstreamHead?.slice(0, 12) ?? "unknown"}`);
+  } else if (runBuild) {
+    console.log(`${app.id}: forced rebuild requested`);
+  } else {
+    console.log(`${app.id}: WASM build matches upstream commit ${upstreamHead.slice(0, 12)}; reusing existing build`);
+  }
 
   if (app.build.wasmBindgenVersionFromCargoLock) {
     const lock = await readFile(join(source, "Cargo.lock"), "utf8");
@@ -92,17 +136,24 @@ async function packageApp(app) {
     }
   }
 
-  const buildToolchain = app.build.toolchain ?? "1.95.0";
-  const [buildCommand, ...buildArgs] = app.build.command;
-  if (buildCommand === "cargo" || buildCommand === "trunk") {
-    const env = { ...process.env, RUSTUP_TOOLCHAIN: buildToolchain };
-    const result = spawnSync(buildCommand, buildArgs, { cwd: workingDirectory, stdio: "inherit", env });
-    if (result.error) throw result.error;
-    if (result.status !== 0) throw new Error(`Command failed (${result.status}): ${buildCommand} ${buildArgs.join(" ")}`);
-  } else {
-    run(buildCommand, buildArgs, workingDirectory);
+  if (runBuild) {
+    console.log(`${app.id}: building upstream at ${upstreamHead?.slice(0, 12) ?? "unknown"}`);
+    const buildToolchain = app.build.toolchain ?? "1.95.0";
+    const [buildCommand, ...buildArgs] = app.build.command;
+    if (buildCommand === "cargo" || buildCommand === "trunk") {
+      const env = { ...process.env, RUSTUP_TOOLCHAIN: buildToolchain };
+      const result = spawnSync(buildCommand, buildArgs, { cwd: workingDirectory, stdio: "inherit", env });
+      if (result.error) throw result.error;
+      if (result.status !== 0) throw new Error(`Command failed (${result.status}): ${buildCommand} ${buildArgs.join(" ")}`);
+    } else {
+      run(buildCommand, buildArgs, workingDirectory);
+    }
   }
   const staticOutput = await findIndexDirectory(output);
+  if (upstreamHead && runBuild) {
+    await mkdir(buildStateDir, { recursive: true });
+    await writeFile(buildStamp, `${upstreamHead}\n`);
+  }
   await rm(appRoot, { recursive: true, force: true });
   await mkdir(appRoot, { recursive: true });
   await cp(staticOutput, appRoot, { recursive: true });
@@ -121,7 +172,10 @@ async function packageApp(app) {
   }, null, 2)}\n`);
   const builtIndex = await readFile(join(appRoot, "index.html"), "utf8");
   const adapterScript = await readFile(adapterPath, "utf8");
-  const initializedAdapter = adapterScript.replace('const APP = window.__ARTCRAFT_APP__ || "vectorcraft";', `const APP = ${JSON.stringify(app.id)};`);
+  const initializedAdapter = adapterScript.replace(
+    'const APP = window.__ARTCRAFT_APP__ || "vectorcraft";',
+    `const APP = ${JSON.stringify(app.id)};`,
+  );
   const appHtml = join(appRoot, `${app.id}.html`);
   const tbHtml = builtIndex.replace("<head>", `<head>\n    <script>window.__ARTCRAFT_APP__ = ${JSON.stringify(app.id)};</script>\n    <script src="./terbium-tfs.js"></script>`);
   await writeFile(appHtml, tbHtml);

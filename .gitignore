@@ -4,3 +4,4 @@ build/
 dist/
 .env
 package-apps.old.mjs
+.build-state

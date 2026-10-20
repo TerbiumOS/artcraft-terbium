@@ -11,7 +11,11 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: rolling-latest-release
+  cancel-in-progress: false
 
 jobs:
   package:
@@ -21,34 +25,67 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: "lts/*"
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
-      - name: Install upstream Rust toolchain
-        run: rustup toolchain install 1.95.0 --profile minimal --target wasm32-unknown-unknown
-      - name: Install LightCraft Rust 1.95 toolchain
+      - name: Install Rust 1.95 toolchain
         run: rustup toolchain install 1.95.0 --profile minimal --target wasm32-unknown-unknown
       - name: Install Trunk
         run: cargo install trunk --version 0.21.14 --locked
-      - name: Install LightCraft wasm-bindgen CLI
+      - name: Install pinned wasm-bindgen CLI
         run: cargo install wasm-bindgen-cli --version 0.2.129 --locked
       - name: Install wasm-opt
         uses: NiklasEi/wasm-opt-action@v2
         with:
-          version: "version_116"
-      - name: Package configured applications
+          file: "*.wasm"
+          optimize_all: false
+      - name: Run app packager
         env:
           APP_IDS: ${{ inputs.apps }}
         run: |
           if [ -n "$APP_IDS" ]; then
-            npm run build -- $APP_IDS
+            node scripts/package-apps.mjs $APP_IDS
           else
-            npm run build
+            node scripts/package-apps.mjs
           fi
-      - uses: actions/upload-artifact@v4
-        with:
-          name: artcraft-terbium-tapps
-          path: dist/*.tapp.zip
-          if-no-files-found: error
-          retention-days: 30
+      - name: Replace rolling latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_tag="rolling-latest"
+          release_title="Latest rolling build"
+          release_notes="Automated rolling build of the latest configured ArtCraft web apps. This release is replaced on each successful workflow run."
+
+          missing_packages=0
+          while IFS=$'\t' read -r app_id _; do
+            package="dist/${app_id}.tapp.zip"
+            if [ ! -f "$package" ]; then
+              echo "Missing $package; packaging $app_id for the complete rolling release"
+              node scripts/package-apps.mjs "$app_id"
+            fi
+            if [ ! -f "$package" ]; then
+              echo "Failed to create $package" >&2
+              missing_packages=1
+            fi
+          done < <(node scripts/package-apps.mjs --list)
+
+          if [ "$missing_packages" -ne 0 ]; then
+            exit 1
+          fi
+
+          if gh release view "$release_tag" >/dev/null 2>&1; then
+            gh release delete "$release_tag" --yes
+          fi
+
+          if git rev-parse --verify "refs/tags/$release_tag" >/dev/null 2>&1; then
+            git push origin ":refs/tags/$release_tag"
+            git tag -d "$release_tag"
+          fi
+
+          git tag "$release_tag" "$GITHUB_SHA"
+          git push origin "$release_tag"
+          gh release create "$release_tag" dist/*.tapp.zip \
+            --title "$release_title" \
+            --notes "$release_notes" \
+            --latest

@@ -72,6 +72,79 @@
         "minWidth": 800,
         "minHeight": 600
       }
+    },
+    {
+      "id": "wordcraft",
+      "name": "WordCraft",
+      "repository": "https://github.com/storytold/wordcraft.git",
+      "branch": "main",
+      "build": {
+        "workingDirectory": "apps/wordcraft-web",
+        "command": ["trunk", "build", "--release"],
+        "outputDirectory": "../../dist/web",
+        "toolchain": "1.95.0"
+      },
+      "window": {
+        "width": 1400,
+        "height": 900,
+        "minWidth": 800,
+        "minHeight": 600
+      }
+    },
+    {
+      "id": "deckcraft",
+      "name": "DeckCraft",
+      "repository": "https://github.com/storytold/deckcraft.git",
+      "branch": "main",
+      "build": {
+        "workingDirectory": "apps/deckcraft-web",
+        "command": ["trunk", "build", "--release"],
+        "outputDirectory": "../../dist/web",
+        "toolchain": "1.95.0"
+      },
+      "window": {
+        "width": 1400,
+        "height": 900,
+        "minWidth": 800,
+        "minHeight": 600
+      }
+    },
+    {
+      "id": "gridcraft",
+      "name": "GridCraft",
+      "repository": "https://github.com/storytold/gridcraft.git",
+      "branch": "main",
+      "build": {
+        "workingDirectory": "apps/gridcraft-web",
+        "command": ["trunk", "build", "--release"],
+        "outputDirectory": "../../dist/web",
+        "toolchain": "1.95.0"
+      },
+      "window": {
+        "width": 1400,
+        "height": 900,
+        "minWidth": 800,
+        "minHeight": 600
+      }
+    },
+    {
+      "id": "filmcraft",
+      "name": "FilmCraft",
+      "repository": "https://github.com/storytold/filmcraft.git",
+      "branch": "main",
+      "build": {
+        "workingDirectory": ".",
+        "command": ["cargo", "xtask", "web"],
+        "outputDirectory": "target/web/dist",
+        "wasmBindgenVersionFromCargoLock": true,
+        "toolchain": "1.95.0"
+      },
+      "window": {
+        "width": 1400,
+        "height": 900,
+        "minWidth": 800,
+        "minHeight": 600
+      }
     }
   ]
 }

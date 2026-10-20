@@ -8,6 +8,10 @@ This repository packages browser-ready Storytold Craft applications as Terbium A
 - `photocraft`
 - `vectorcraft`
 - `lightcraft`
+- `wordcraft`
+- `deckcraft`
+- `gridcraft`
+- `filmcraft`
 
 The source repositories are cloned into `sources/` at build time rather than added as submodules. This keeps upstream tracking automatic and avoids committing multi-repository source snapshots.
 
@@ -15,10 +19,10 @@ The source repositories are cloned into `sources/` at build time rather than add
 
 - Node.js 20+
 - Rust stable with `wasm32-unknown-unknown`
-- Trunk 0.21.14 for PdfCraft, PhotoCraft, and VectorCraft
+- Trunk 0.21.14 for PdfCraft, PhotoCraft, VectorCraft, WordCraft, DeckCraft, and GridCraft
 - Rust 1.95.0 for the current upstream web builds
-- `wasm-bindgen-cli` matching the version pinned in LightCraft's `Cargo.lock` (currently 0.2.129)
-- `wasm-opt` (Binaryen) for LightCraft's optimized bundle; the build supports optional omission locally
+- `wasm-bindgen-cli` matching the version pinned in LightCraft and FilmCraft's `Cargo.lock` (currently 0.2.129)
+- `wasm-opt` (Binaryen) for optimized bundles; the build supports optional omission locally
 - Any project-specific Rust prerequisites documented upstream
 - Windows users: `tar` is used to create ZIP archives. Current Windows installations include BSdtar.
 
@@ -42,9 +46,9 @@ The build injects `scripts/tfsbridge-adapter.js` as `terbium-tfs.js` into every 
 
 ## Automation
 
-`.github/workflows/update-and-package.yml` runs every Monday at 03:17 UTC and can also be launched manually. It pulls the configured upstream branches, builds the web targets, and uploads every generated TAPP as a GitHub Actions artifact.
+`.github/workflows/update-and-package.yml` runs every Monday at 03:17 UTC and can also be launched manually. It pulls the configured upstream branches, runs `scripts/package-apps.mjs` for the selected web targets, and replaces the `rolling-latest` GitHub release with the generated TAPPs. This workflow only removes and recreates its own `rolling-latest` release/tag; separately tagged releases remain untouched.
 
-The workflow does not publish releases because a repository remote and release policy were not provided. Add a release step only after deciding where versioned artifacts should be hosted.
+The rolling release is marked as the latest GitHub release. Stable/LTS releases can use separate tags and are not modified by this workflow.
 
 ## Terbium packaging contract
 
@@ -56,6 +60,6 @@ The generated packages follow Terbium v2's documented TAPP layout:
 
 ## Constraints
 
-The Trunk apps emit their site to `sources/<app>/dist/web`. LightCraft is built from its repository root with `cargo xtask web` and emits to `target/web-site`.
+The Trunk apps emit their site to `sources/<app>/dist/web`. LightCraft is built from its repository root with `cargo xtask web` and emits to `target/web-site`; FilmCraft uses the same command and emits to `target/web/dist`.
 
 The apps use browser technologies such as WebAssembly, WebGPU/WebGL, storage APIs, workers, and in some cases media APIs. Successful packaging does not guarantee every capability is available in every Terbium host browser. Validate each package in the intended Terbium deployment before publishing it as supported.

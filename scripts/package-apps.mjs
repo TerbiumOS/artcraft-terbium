@@ -189,7 +189,7 @@ async function packageApp(app) {
   await mkdir(join(root, "dist"), { recursive: true });
   const archive = join(root, "dist", `${app.id}.tapp.zip`);
   await rm(archive, { force: true });
-  run("zip", ["-r", archive, "."], { cwd: appRoot });
+  run("zip", ["-r", archive, "."], appRoot);
   console.log(`Created ${archive}`);
 }
 

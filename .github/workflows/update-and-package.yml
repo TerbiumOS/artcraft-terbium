@@ -74,15 +74,17 @@ jobs:
             exit 1
           fi
 
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           if gh release view "$release_tag" >/dev/null 2>&1; then
-            gh release delete "$release_tag" --yes
+            gh release delete "$release_tag" --cleanup-tag --yes
           fi
 
           if git rev-parse --verify "refs/tags/$release_tag" >/dev/null 2>&1; then
-            git push origin ":refs/tags/$release_tag"
-            git tag -d "$release_tag"
+            git tag -d "$release_tag" || true
           fi
-
+          git push origin --delete "$release_tag" >/dev/null 2>&1 || true
           git tag "$release_tag" "$GITHUB_SHA"
           git push origin "$release_tag"
           gh release create "$release_tag" dist/*.tapp.zip \
